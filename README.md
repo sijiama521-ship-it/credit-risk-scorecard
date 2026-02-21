@@ -1,10 +1,10 @@
-# 🏦 Credit Risk Scorecard + IFRS 9 ECL Engine
+# Credit Risk Scorecard + IFRS 9 ECL Engine
 
 A full end-to-end credit risk modelling project built in Python, covering probability of default (PD) estimation, IFRS 9 stage classification, and expected credit loss (ECL) calculation across multiple economic scenarios.
 
 ---
 
-## 📌 Project Overview
+## Project Overview
 
 This project replicates a bank-grade credit risk workflow using the [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) dataset (150,000 retail borrowers). It is structured around three core deliverables:
 
@@ -16,7 +16,7 @@ This project replicates a bank-grade credit risk workflow using the [Give Me Som
 
 ---
 
-## 📊 Key Results
+## Key Results
 
 | Metric | Value |
 |--------|-------|
@@ -27,7 +27,7 @@ This project replicates a bank-grade credit risk workflow using the [Give Me Som
 
 ---
 
-## 🗂️ Repository Structure
+## Repository Structure
 
 ```
 credit-risk-scorecard/
@@ -61,7 +61,7 @@ credit-risk-scorecard/
 
 ---
 
-## 🔧 Tech Stack
+## Tech Stack
 
 - **Python** — pandas, numpy, scikit-learn, matplotlib, seaborn
 - **Modelling** — Logistic Regression (sklearn), StandardScaler
@@ -69,7 +69,7 @@ credit-risk-scorecard/
 
 ---
 
-## 🚀 How to Run
+## How to Run
 
 ### Option 1: Google Colab (recommended)
 1. Open each notebook in [Google Colab](https://colab.research.google.com)
@@ -87,7 +87,7 @@ Run notebooks in order: 01 → 02 → 03
 
 ---
 
-## 📐 Methodology
+## Methodology
 
 ### 1. Data Cleaning (Notebook 1)
 - 150,000 borrower records from Kaggle
@@ -127,7 +127,7 @@ $$ECL = PD \times LGD \times EAD \times DF$$
 
 ---
 
-## ⚠️ Limitations & Assumptions
+## Limitations & Assumptions
 
 - LGD and EAD are fixed assumptions, not estimated from data
 - EAD is proxied from income, not actual loan balances
@@ -137,14 +137,9 @@ $$ECL = PD \times LGD \times EAD \times DF$$
 
 ---
 
-## 📄 Data Source
+## Data Source
 
 **Give Me Some Credit** — Kaggle Competition  
 [https://www.kaggle.com/c/GiveMeSomeCredit](https://www.kaggle.com/c/GiveMeSomeCredit)
 
----
 
-## 👤 Author
-
-**Your Name**  
-[LinkedIn](https://linkedin.com/in/yourprofile) | [GitHub](https://github.com/yourusername)
