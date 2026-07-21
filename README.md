@@ -1,18 +1,19 @@
 # Credit Risk Scorecard + IFRS 9 ECL Engine
 
-A full end-to-end credit risk modelling project built in Python, covering probability of default (PD) estimation, IFRS 9 stage classification, and expected credit loss (ECL) calculation across multiple economic scenarios.
+An end-to-end credit risk modelling project built in Python, replicating a bank-grade workflow: data cleaning, PD modelling, IFRS 9 stage classification, and expected credit loss calculation.
 
 ---
 
 ## Project Overview
 
-This project replicates a bank-grade credit risk workflow using the [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) dataset (150,000 retail borrowers). It is structured around three core deliverables:
+**Business problem:** Banks must estimate the probability that each borrower will default, classify them under IFRS 9, and hold sufficient loss provisions. This project replicates that workflow using the [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) dataset (150,000 retail borrowers).
 
 | Component | Description |
 |-----------|-------------|
-| **PD Model** | Logistic Regression model to estimate probability of default |
-| **ECL Engine** | IFRS 9-style expected credit loss calculator |
-| **Model Governance** | Assumptions, limitations, and monitoring framework |
+| **EDA** | Exploratory analysis — default rate, income patterns, missing values |
+| **PD Model** | Logistic Regression to estimate probability of default |
+| **IFRS 9 Engine** | Stage classification (Stage 1/2/3) based on PD |
+| **ECL Calculator** | Expected Credit Loss = PD × LGD × EAD × Horizon |
 
 ---
 
@@ -20,10 +21,64 @@ This project replicates a bank-grade credit risk workflow using the [Give Me Som
 
 | Metric | Value |
 |--------|-------|
-| AUC-ROC | **0.8611** |
-| KS Statistic | **0.5610** |
-| Overall Default Rate | ~6.7% |
-| Weighted ECL Coverage | See `ecl_stage_summary.csv` |
+| Test set AUC-ROC | **0.83** |
+| Overall default rate | 6.7% (class imbalance addressed with `class_weight="balanced"`) |
+| Stage 1 avg ECL | $3,806 (12-month provision) |
+| Stage 2 avg ECL | $26,348 (lifetime provision) |
+| Stage 3 avg ECL | $62,534 (lifetime provision) |
+| Stage 3 vs Stage 1 provisioning | **16× higher** |
+
+**Key insight:** Stage 3 borrowers require 16× more provisioning than Stage 1. This demonstrates why accurate PD modelling matters — misclassifying a high-risk borrower as low-risk causes the bank to under-provision by 16×, creating hidden balance sheet risk.
+
+---
+
+## Methodology
+
+### 1. Data Cleaning
+- **Missing values:** `MonthlyIncome` (19.8% missing) and `NumberOfDependents` (2.6% missing) filled with median. Median chosen over mean because income is right-skewed — extreme high earners would inflate the mean.
+- **Outliers:** `RevolvingUtilizationOfUnsecuredLines` clipped to [0, 1] (values above 100% are data errors). Borrowers aged < 18 removed (banks do not lend to minors).
+
+### 2. Feature Engineering
+Combined three delinquency columns into a single `TotalDelinquencies` feature:
+```
+TotalDelinquencies = 30-59 days past due + 60-89 days past due + 90+ days late
+```
+Delinquency history is the strongest predictor of default. One aggregated signal gives the model a clearer input than three correlated columns.
+
+### 3. PD Model
+- **Algorithm:** Logistic Regression with `class_weight="balanced"`
+- **Why Logistic Regression:** High interpretability — each coefficient can be explained to regulators. Trade-off against XGBoost (higher accuracy but black-box).
+- **Why `class_weight="balanced"`:** Default rate is only 6.7%. Without balancing, the model would predict "no default" for all borrowers and achieve 93% accuracy while being useless for risk management.
+- **Scaling:** `StandardScaler` applied to training data; same scale applied to test data (test set does not re-fit the scaler — that would constitute data leakage).
+- **Train/test split:** 80% train, 20% test. AUC evaluated on the held-out test set only.
+
+### 4. IFRS 9 Stage Classification
+
+| Stage | PD Threshold | ECL Horizon | Rationale |
+|-------|-------------|-------------|-----------|
+| Stage 1 | PD < 10% | 12 months | Low risk — short-term provision sufficient |
+| Stage 2 | 10% ≤ PD < 50% | Lifetime (3 yr) | Credit quality has deteriorated |
+| Stage 3 | PD ≥ 50% | Lifetime (3 yr) | High risk / in default |
+
+### 5. ECL Calculation
+```
+ECL = PD × LGD × EAD × Horizon
+```
+| Parameter | Value | Assumption |
+|-----------|-------|------------|
+| PD | Model output | Per borrower |
+| LGD | 45% | Basel II standard for unsecured retail |
+| EAD | Monthly income × 12 | Proxy — actual loan balances not in dataset |
+| Horizon | 1 year (S1) / 3 years (S2/S3) | Per IFRS 9 |
+
+---
+
+## Limitations
+
+- `class_weight="balanced"` causes PD scores to be systematically overstated. In production, a calibration step (e.g. Platt scaling) would align predicted PDs with observed default rates.
+- LGD and EAD use simplified assumptions. Real banks estimate LGD from historical recovery data and EAD from actual contract balances.
+- Stage thresholds are PD-based only. IFRS 9 also uses a 30-days-past-due backstop not implemented here.
+- Model is not validated on out-of-time data.
 
 ---
 
@@ -31,115 +86,45 @@ This project replicates a bank-grade credit risk workflow using the [Give Me Som
 
 ```
 credit-risk-scorecard/
-│
-├── data/
-│   ├── cs-training.csv           # Raw data (from Kaggle)
-│   └── cs-training-clean.csv     # Cleaned data (output of Notebook 1)
-│
 ├── notebooks/
-│   ├── notebook_01_eda.ipynb           # Exploratory Data Analysis & Cleaning
-│   ├── notebook_02_pd_model.ipynb      # PD Model Training & Evaluation
-│   └── notebook_03_ecl_engine.ipynb    # IFRS 9 ECL Calculator
-│
-├── report/
-│   ├── plot_01_target_distribution.png
-│   ├── plot_06_roc_curve.png
-│   ├── plot_07_confusion_matrix.png
-│   ├── plot_08_calibration_curve.png
-│   ├── plot_09_feature_importance.png
-│   ├── plot_11_ifrs9_stages.png
-│   ├── plot_12_scenario_ecl.png
-│   └── plot_13_pd_by_stage.png
-│
+│   ├── notebook_01_eda.py          # EDA: default rate, income analysis, missing values
+│   ├── notebook_02_pd_model.py     # PD model: cleaning, feature engineering, AUC = 0.83
+│   └── notebook_03_ecl_engine.py   # IFRS 9 stage classification + ECL calculation
 ├── outputs/
-│   ├── pd_predictions.csv        # PD scores for test set
-│   ├── ecl_results.csv           # Full ECL results per borrower
-│   └── ecl_stage_summary.csv     # ECL summary by IFRS 9 Stage
-│
+│   ├── ecl_results.csv             # Per-borrower PD, Stage, EAD, ECL
+│   └── ecl_stage_summary.csv       # ECL summary by IFRS 9 Stage
 └── README.md
+```
+
+---
+
+## How to Run
+
+```bash
+git clone https://github.com/sijiama521-ship-it/credit-risk-scorecard.git
+cd credit-risk-scorecard
+pip install pandas scikit-learn matplotlib
+
+# Download cs-training.csv from Kaggle and place in /data/
+# https://www.kaggle.com/c/GiveMeSomeCredit/data
+
+python notebooks/notebook_01_eda.py
+python notebooks/notebook_02_pd_model.py
+python notebooks/notebook_03_ecl_engine.py
 ```
 
 ---
 
 ## Tech Stack
 
-- **Python** — pandas, numpy, scikit-learn, matplotlib, seaborn
-- **Modelling** — Logistic Regression (sklearn), StandardScaler
-- **Reporting** — Jupyter Notebook, joblib
-
----
-
-## How to Run
-
-### Option 1: Google Colab (recommended)
-1. Open each notebook in [Google Colab](https://colab.research.google.com)
-2. Upload the required CSV files when prompted
-3. Run all cells: `Runtime → Run all`
-
-### Option 2: Local
-```bash
-git clone https://github.com/YOUR_USERNAME/credit-risk-scorecard.git
-cd credit-risk-scorecard
-pip install pandas numpy scikit-learn matplotlib seaborn joblib
-jupyter notebook
-```
-Run notebooks in order: 01 → 02 → 03
-
----
-
-## Methodology
-
-### 1. Data Cleaning (Notebook 1)
-- 150,000 borrower records from Kaggle
-- Missing value imputation: median for `monthly_income` and `dependents`
-- Outlier treatment: age filter (18–100), utilisation rate clipping, delinquency code removal
-
-### 2. PD Model (Notebook 2)
-- **Model:** Logistic Regression with `class_weight='balanced'`
-- **Features:** 12 variables including engineered features (total delinquency, log-income, income per dependent)
-- **Evaluation:** AUC-ROC = 0.8611, KS = 0.5610, calibration curve
-
-### 3. IFRS 9 ECL Engine (Notebook 3)
-
-**ECL Formula:**
-$$ECL = PD \times LGD \times EAD \times DF$$
-
-| Parameter | Assumption |
-|-----------|-----------|
-| PD | Model output (per borrower) |
-| LGD | 45% (Basel II unsecured retail standard) |
-| EAD | 12× monthly income proxy |
-| Discount Factor | 1 / (1 + 5%) |
-
-**Stage Classification:**
-| Stage | Criteria | ECL Horizon |
-|-------|----------|-------------|
-| Stage 1 | PD < 10% | 12-month ECL |
-| Stage 2 | 10% ≤ PD < 50% | Lifetime ECL (3 years) |
-| Stage 3 | PD ≥ 50% or defaulted | Lifetime ECL (3 years) |
-
-**Scenario Weighting:**
-| Scenario | Weight | PD Adjustment |
-|----------|--------|---------------|
-| Optimistic | 25% | −30% |
-| Base | 50% | No change |
-| Pessimistic | 25% | +50% |
-
----
-
-## Limitations & Assumptions
-
-- LGD and EAD are fixed assumptions, not estimated from data
-- EAD is proxied from income, not actual loan balances
-- The model is not validated on out-of-time data
-- Stage thresholds are based on PD only (not 30 DPD backstop)
-- Scenario multipliers are illustrative, not macro-model-derived
+- **Python** — pandas, scikit-learn, matplotlib
+- **Modelling** — Logistic Regression, StandardScaler, train_test_split
+- **Evaluation** — AUC-ROC
 
 ---
 
 ## Data Source
 
-**Give Me Some Credit** — Kaggle Competition  
+**Give Me Some Credit** — Kaggle Competition
 [https://www.kaggle.com/c/GiveMeSomeCredit](https://www.kaggle.com/c/GiveMeSomeCredit)
-
 
